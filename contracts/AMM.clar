@@ -55,7 +55,7 @@
 )
 
 ;; Swap tokens
-(define-public (swap-x-for-y (amount-x uint))
+(define-public (swap-x-for-y  (amount-x uint) (min-y-out uint) )
     (let
         (
             (x-balance (var-get token-x-balance))
@@ -68,6 +68,8 @@
             (dynamic-fee (calculate-dynamic-fee new-price))
         )
         (begin
+            (asserts! (>= y-out min-y-out) (err u104))
+
             (var-set current-fee dynamic-fee)
             (var-set last-price new-price)
             (var-set token-x-balance new-x-balance)
@@ -120,3 +122,5 @@
         )
     )
 )
+
+
