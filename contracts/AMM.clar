@@ -92,3 +92,16 @@
 ;; Add to existing functions like swap-x-for-y
 (asserts! (not (var-get is-paused)) (err u103)) ;; Add at start of function
 
+
+(define-data-var external-price uint u0)
+(define-data-var price-timestamp uint u0)
+
+(define-read-only (get-price-info)
+    (ok {
+        amm-price: (var-get last-price),
+        oracle-price: (var-get external-price),
+        timestamp: (var-get price-timestamp)
+    })
+)
+
+
