@@ -76,3 +76,19 @@
         )
     )
 )
+
+
+;; Add at the top with other data vars
+(define-data-var is-paused bool false)
+
+;; Add new function
+(define-public (toggle-pause)
+    (begin
+        (asserts! (is-eq tx-sender (var-get owner)) ERR-NOT-AUTHORIZED)
+        (ok (var-set is-paused (not (var-get is-paused))))
+    )
+)
+
+;; Add to existing functions like swap-x-for-y
+(asserts! (not (var-get is-paused)) (err u103)) ;; Add at start of function
+
