@@ -105,3 +105,18 @@
 )
 
 
+;; Add new data vars
+(define-map lp-shares principal uint)
+(define-data-var total-shares uint u0)
+
+(define-public (claim-rewards (amount uint))
+    (let (
+        (user-shares (default-to u0 (map-get? lp-shares tx-sender)))
+        (reward-amount (/ (* amount user-shares) (var-get total-shares)))
+    )
+        (begin
+            (asserts! (> user-shares u0) ERR-INSUFFICIENT-BALANCE)
+            (ok reward-amount)
+        )
+    )
+)
