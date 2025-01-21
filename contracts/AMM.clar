@@ -124,3 +124,24 @@
 )
 
 
+
+;; Add new data vars
+(define-map token-balances (string-ascii 32) uint)
+(define-map token-pairs
+    {token-a: (string-ascii 32), token-b: (string-ascii 32)}
+    {active: bool, fee: uint}
+)
+
+(define-public (add-token-pair 
+    (token-a (string-ascii 32)) 
+    (token-b (string-ascii 32)) 
+    (initial-fee uint)
+)
+    (begin
+        (asserts! (is-eq tx-sender (var-get owner)) ERR-NOT-AUTHORIZED)
+        (ok (map-set token-pairs
+            {token-a: token-a, token-b: token-b}
+            {active: true, fee: initial-fee}
+        ))
+    )
+)
