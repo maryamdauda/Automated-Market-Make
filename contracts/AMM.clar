@@ -328,3 +328,192 @@
         )
     )
 )
+
+
+;; Add at top with other data vars
+(define-data-var twap-cumulative uint u0)
+(define-data-var last-update-time uint u0)
+
+(define-public (update-twap)
+    (let (
+        (current-time stacks-block-height)
+        (time-elapsed (- current-time (var-get last-update-time)))
+        (current-price (var-get last-price))
+    )
+        (begin
+            (var-set twap-cumulative (+ (var-get twap-cumulative) (* current-price time-elapsed)))
+            (var-set last-update-time current-time)
+            (ok (/ (var-get twap-cumulative) current-time))
+        )
+    )
+)
+
+
+(define-map lp-tiers principal 
+    {
+        tier: uint,
+        multiplier: uint,
+        min-stake: uint
+    }
+)
+
+(define-public (set-lp-tier (stake-amount uint))
+    (let (
+        (tier-info (if (>= stake-amount u1000000)
+            {tier: u3, multiplier: u150, min-stake: u1000000}
+            (if (>= stake-amount u500000)
+                {tier: u2, multiplier: u125, min-stake: u500000}
+                {tier: u1, multiplier: u100, min-stake: u0}
+            )
+        ))
+    )
+        (ok (map-set lp-tiers tx-sender tier-info))
+    )
+)
+
+
+(define-map limit-orders 
+    {id: uint}
+    {
+        owner: principal,
+        token-in: (string-ascii 32),
+        token-out: (string-ascii 32),
+        amount-in: uint,
+        min-price: uint,
+        expiry: uint
+    }
+)
+(define-data-var order-counter uint u0)
+
+(define-public (place-limit-order 
+    (token-in (string-ascii 32))
+    (token-out (string-ascii 32))
+    (amount-in uint)
+    (min-price uint)
+    (expiry uint)
+)
+    (let (
+        (order-id (var-get order-counter))
+    )
+        (begin
+            (var-set order-counter (+ order-id u1))
+            (ok (map-set limit-orders
+                {id: order-id}
+                {
+                    owner: tx-sender,
+                    token-in: token-in,
+                    token-out: token-out,
+                    amount-in: amount-in,
+                    min-price: min-price,
+                    expiry: expiry
+                }
+            ))
+        )
+    )
+)
+
+
+
+(define-map trading-cooldowns principal uint)
+(define-constant COOLDOWN-PERIOD u10) ;; blocks
+
+(define-private (check-trading-cooldown)
+    (let (
+        (last-trade (default-to u0 (map-get? trading-cooldowns tx-sender)))
+        (current-block stacks-block-height)
+    )
+        (if (> (- current-block last-trade) COOLDOWN-PERIOD)
+            (begin
+                (map-set trading-cooldowns tx-sender current-block)
+                true
+            )
+            false
+        )
+    )
+)
+
+
+
+(define-map pool-weights 
+    (string-ascii 32)
+    {weight: uint, last-update: uint}
+)
+
+(define-public (adjust-pool-weight 
+    (token (string-ascii 32))
+    (new-weight uint)
+)
+    (begin
+        (asserts! (is-eq tx-sender (var-get owner)) ERR-NOT-AUTHORIZED)
+        (ok (map-set pool-weights token 
+            {
+                weight: new-weight,
+                last-update: stacks-block-height
+            }
+        ))
+    )
+)
+
+
+(define-data-var mining-enabled bool true)
+(define-data-var reward-per-block uint u100)
+(define-map miner-rewards principal uint)
+
+(define-public (claim-mining-rewards)
+    (let (
+        (user-stake (default-to u0 (map-get? lp-shares tx-sender)))
+        (blocks-staked (- stacks-block-height (var-get last-update-time)))
+        (reward (* blocks-staked (var-get reward-per-block)))
+    )
+        (begin
+            (asserts! (var-get mining-enabled) ERR-NOT-AUTHORIZED)
+            (asserts! (> user-stake u0) ERR-INSUFFICIENT-BALANCE)
+            (map-set miner-rewards tx-sender (+ (default-to u0 (map-get? miner-rewards tx-sender)) reward))
+            (ok reward)
+        )
+    )
+)
+
+
+(define-map fee-sharing-points principal uint)
+(define-data-var total-fee-points uint u0)
+
+(define-public (register-fee-sharing)
+    (let (
+        (user-liquidity (default-to u0 (map-get? lp-shares tx-sender)))
+        (points (/ (* user-liquidity u100) (var-get total-shares)))
+    )
+        (begin
+            (map-set fee-sharing-points tx-sender points)
+            (var-set total-fee-points (+ (var-get total-fee-points) points))
+            (ok points)
+        )
+    )
+)
+
+
+(define-map circuit-breakers
+    (string-ascii 32)
+    {
+        threshold: uint,
+        triggered: bool,
+        cool-down: uint
+    }
+)
+
+(define-public (set-circuit-breaker
+    (breaker-id (string-ascii 32))
+    (threshold uint)
+    (cool-down uint)
+)
+    (begin
+        (asserts! (is-eq tx-sender (var-get owner)) ERR-NOT-AUTHORIZED)
+        (ok (map-set circuit-breakers breaker-id
+            {
+                threshold: threshold,
+                triggered: false,
+                cool-down: cool-down
+            }
+        ))
+    )
+)
