@@ -517,3 +517,251 @@
         ))
     )
 )
+
+
+(define-map governance-signers principal bool)
+(define-data-var required-signatures uint u3)
+(define-data-var proposal-counter uint u0)
+
+(define-map governance-proposals 
+    {id: uint} 
+    {
+        proposer: principal,
+        description: (string-ascii 100),
+        signatures: uint,
+        executed: bool,
+        expiry: uint
+    }
+)
+
+(define-map proposal-votes 
+    {proposal-id: uint, signer: principal} 
+    bool
+)
+
+(define-public (add-governance-signer (signer principal))
+    (begin
+        (asserts! (is-eq tx-sender (var-get owner)) ERR-NOT-AUTHORIZED)
+        (ok (map-set governance-signers signer true))
+    )
+)
+
+(define-public (create-proposal (description (string-ascii 100)) (expiry uint))
+    (let
+        (
+            (proposal-id (var-get proposal-counter))
+        )
+        (begin
+            (asserts! (default-to false (map-get? governance-signers tx-sender)) ERR-NOT-AUTHORIZED)
+            (var-set proposal-counter (+ proposal-id u1))
+            (ok (map-set governance-proposals 
+                {id: proposal-id}
+                {
+                    proposer: tx-sender,
+                    description: description,
+                    signatures: u1,
+                    executed: false,
+                    expiry: expiry
+                }
+            ))
+        )
+    )
+)
+
+(define-public (sign-proposal (proposal-id uint))
+    (let
+        (
+            (proposal (unwrap! (map-get? governance-proposals {id: proposal-id}) ERR-NOT-AUTHORIZED))
+            (current-signatures (get signatures proposal))
+        )
+        (begin
+            (asserts! (default-to false (map-get? governance-signers tx-sender)) ERR-NOT-AUTHORIZED)
+            (asserts! (not (default-to false (map-get? proposal-votes {proposal-id: proposal-id, signer: tx-sender}))) ERR-NOT-AUTHORIZED)
+            (map-set proposal-votes {proposal-id: proposal-id, signer: tx-sender} true)
+            (map-set governance-proposals 
+                {id: proposal-id}
+                (merge proposal {signatures: (+ current-signatures u1)})
+            )
+            (ok true)
+        )
+    )
+)
+
+(define-public (execute-proposal (proposal-id uint))
+    (let
+        (
+            (proposal (unwrap! (map-get? governance-proposals {id: proposal-id}) ERR-NOT-AUTHORIZED))
+        )
+        (begin
+            (asserts! (>= (get signatures proposal) (var-get required-signatures)) ERR-NOT-AUTHORIZED)
+            (asserts! (not (get executed proposal)) ERR-NOT-AUTHORIZED)
+            (asserts! (< stacks-block-height (get expiry proposal)) ERR-NOT-AUTHORIZED)
+            (map-set governance-proposals 
+                {id: proposal-id}
+                (merge proposal {executed: true})
+            )
+            (ok true)
+        )
+    )
+)
+
+
+
+(define-data-var mining-start-block uint u0)
+(define-data-var mining-end-block uint u0)
+(define-data-var mining-rewards-per-block uint u100)
+(define-data-var total-mining-rewards uint u0)
+(define-map user-mining-info principal {last-claim-block: uint, pending-rewards: uint})
+
+(define-public (initialize-mining-program (start-block uint) (end-block uint) (rewards-per-block uint) (total-rewards uint))
+    (begin
+        (asserts! (is-eq tx-sender (var-get owner)) ERR-NOT-AUTHORIZED)
+        (var-set mining-start-block start-block)
+        (var-set mining-end-block end-block)
+        (var-set mining-rewards-per-block rewards-per-block)
+        (var-set total-mining-rewards total-rewards)
+        (ok true)
+    )
+)
+
+(define-private (calculate-user-rewards (user principal))
+    (let
+        (
+            (user-info (default-to {last-claim-block: (var-get mining-start-block), pending-rewards: u0} 
+                        (map-get? user-mining-info user)))
+            (user-shares (default-to u0 (map-get? lp-shares user)))
+            (current-block (if (> stacks-block-height (var-get mining-end-block)) 
+                              (var-get mining-end-block) 
+                              stacks-block-height))
+            (blocks-since-last-claim (- current-block (get last-claim-block user-info)))
+            (total-pool-shares (var-get total-shares))
+            (user-share-percentage (if (> total-pool-shares u0)
+                                      (/ (* user-shares u10000) total-pool-shares)
+                                      u0))
+            (new-rewards (/ (* blocks-since-last-claim (var-get mining-rewards-per-block) user-share-percentage) u10000))
+            (total-pending (+ (get pending-rewards user-info) new-rewards))
+        )
+        {
+            rewards: total-pending,
+            last-block: current-block
+        }
+    )
+)
+
+(define-read-only (get-pending-mining-rewards (user principal))
+    (ok (get rewards (calculate-user-rewards user)))
+)
+
+(define-data-var fee-adjustment-period uint u144) ;; ~1 day in blocks
+(define-data-var last-fee-adjustment uint u0)
+(define-data-var volatility-threshold uint u500) ;; 5% threshold
+(define-data-var max-fee uint u100) ;; 1% max fee
+(define-data-var min-fee uint u10) ;; 0.1% min fee
+(define-map historical-prices uint uint)
+
+(define-public (record-historical-price)
+    (begin
+        (asserts! (is-eq tx-sender (var-get owner)) ERR-NOT-AUTHORIZED)
+        (map-set historical-prices stacks-block-height (var-get last-price))
+        (ok true)
+    )
+)
+
+(define-private (calculate-volatility)
+    (let
+        (
+            (current-block stacks-block-height)
+            (lookback-period (var-get fee-adjustment-period))
+            (lookback-block (- current-block lookback-period))
+            (old-price (default-to u0 (map-get? historical-prices lookback-block)))
+            (current-price (var-get last-price))
+            (price-diff (if (and (> old-price u0) (> current-price u0))
+                          (if (> current-price old-price)
+                            (/ (* (- current-price old-price) u10000) old-price)
+                            (/ (* (- old-price current-price) u10000) old-price))
+                          u0))
+        )
+        price-diff
+    )
+)
+
+(define-public (adjust-fee-based-on-volatility)
+    (let
+        (
+            (current-block stacks-block-height)
+            (volatility (calculate-volatility))
+            (new-fee (if (> volatility (var-get volatility-threshold))
+                        ;; High volatility - increase fee
+                        (if (> (+ (var-get current-fee) u10) (var-get max-fee))
+                            (var-get max-fee)
+                            (+ (var-get current-fee) u10))
+                        ;; Low volatility - decrease fee
+                        (if (< (- (var-get current-fee) u5) (var-get min-fee))
+                            (var-get min-fee)
+                            (- (var-get current-fee) u5))))
+        )
+        (begin
+            (asserts! (> (- current-block (var-get last-fee-adjustment)) (var-get fee-adjustment-period)) ERR-NOT-AUTHORIZED)
+            (var-set current-fee new-fee)
+            (var-set last-fee-adjustment current-block)
+            (ok new-fee)
+        )
+    )
+)
+
+
+(define-data-var twap-period uint u144) ;; ~1 day in blocks
+(define-map price-accumulator uint {cumulative-price: uint, timestamp: uint})
+(define-data-var last-observation-index uint u0)
+(define-data-var observation-count uint u24) ;; Store 24 observations
+
+(define-public (update-price-accumulator)
+    (let
+        (
+            (current-block stacks-block-height)
+            (current-price (var-get last-price))
+            (last-observation (default-to {cumulative-price: u0, timestamp: current-block} 
+                              (map-get? price-accumulator (var-get last-observation-index))))
+            (time-elapsed (- current-block (get timestamp last-observation)))
+            (new-cumulative-price (+ (get cumulative-price last-observation) (* current-price time-elapsed)))
+            (new-index (mod (+ (var-get last-observation-index) u1) (var-get observation-count)))
+        )
+        (begin
+            (map-set price-accumulator new-index 
+                {
+                    cumulative-price: new-cumulative-price,
+                    timestamp: current-block
+                }
+            )
+            (var-set last-observation-index new-index)
+            (ok new-cumulative-price)
+        )
+    )
+)
+
+(define-read-only (get-twap)
+    (let
+        (
+            (current-block stacks-block-height)
+            (current-index (var-get last-observation-index))
+            (lookback-index (mod (+ current-index u1) (var-get observation-count)))
+            (current-observation (default-to {cumulative-price: u0, timestamp: current-block} 
+                                (map-get? price-accumulator current-index)))
+            (lookback-observation (default-to {cumulative-price: u0, timestamp: u0} 
+                                 (map-get? price-accumulator lookback-index)))
+            (price-diff (- (get cumulative-price current-observation) (get cumulative-price lookback-observation)))
+            (time-diff (- (get timestamp current-observation) (get timestamp lookback-observation)))
+        )
+        (if (> time-diff u0)
+            (ok (/ price-diff time-diff))
+            (ok (var-get last-price))
+        )
+    )
+)
+
+
+
+
+
+
+
