@@ -815,3 +815,18 @@
         )
     )
 )
+
+
+(define-public (unstake-with-boost)
+    (let
+        (
+            (stake-info (unwrap! (map-get? staking-boost-info tx-sender) ERR-NOT-AUTHORIZED))
+            (current-block stacks-block-height)
+            (lock-end (+ (get lock-start stake-info) (get lock-duration stake-info)))
+        )
+        (begin
+            (asserts! (> current-block lock-end) ERR-NOT-AUTHORIZED)
+            (ok true)
+        )
+    )
+)
