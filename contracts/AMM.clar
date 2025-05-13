@@ -765,3 +765,53 @@
 
 
 
+(define-map staking-boost-info 
+    principal 
+    {
+        boost-multiplier: uint,
+        lock-duration: uint,
+        lock-start: uint,
+        staked-amount: uint
+    }
+)
+
+(define-constant BOOST-LEVELS 
+    {
+        base: u100,
+        bronze: u125,
+        silver: u150,
+        gold: u200
+    }
+)
+
+(define-constant LOCK-PERIODS
+    {
+        month-1: u4320,
+        month-3: u12960,
+        month-6: u25920
+    }
+)
+
+(define-public (stake-with-boost (amount uint) (lock-duration uint))
+    (let
+        (
+            (multiplier (if (>= lock-duration (get month-6 LOCK-PERIODS))
+                           (get gold BOOST-LEVELS)
+                           (if (>= lock-duration (get month-3 LOCK-PERIODS))
+                               (get silver BOOST-LEVELS)
+                               (get bronze BOOST-LEVELS))))
+        )
+        (begin
+            (asserts! (>= amount u1000000) ERR-INSUFFICIENT-BALANCE)
+            (map-set staking-boost-info tx-sender
+                {
+                    boost-multiplier: multiplier,
+                    lock-duration: lock-duration,
+                    lock-start: stacks-block-height,
+                    staked-amount: amount
+                }
+            )
+            (ok multiplier)
+        )
+    )
+)
