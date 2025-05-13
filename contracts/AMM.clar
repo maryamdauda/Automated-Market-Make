@@ -830,3 +830,40 @@
         )
     )
 )
+
+
+(define-map pool-metrics
+    (string-ascii 32)
+    {
+        target-ratio: uint,
+        current-ratio: uint,
+        last-rebalance: uint,
+        volume-24h: uint
+    }
+)
+
+(define-constant REBALANCE-THRESHOLD u100)
+(define-constant REBALANCE-COOLDOWN u144)
+
+(define-public (rebalance-pool (token-a (string-ascii 32)) (token-b (string-ascii 32)))
+    (let
+        (
+            (metrics (unwrap! (map-get? pool-metrics token-a) ERR-POOL-EMPTY))
+            (current-block stacks-block-height)
+            (ratio-diff (- (get target-ratio metrics) (get current-ratio metrics)))
+        )
+        (begin
+            (asserts! (> (- current-block (get last-rebalance metrics)) REBALANCE-COOLDOWN) ERR-NOT-AUTHORIZED)
+            (asserts! (> ratio-diff REBALANCE-THRESHOLD) ERR-NOT-AUTHORIZED)
+            (map-set pool-metrics token-a
+                (merge metrics 
+                    {
+                        current-ratio: (get target-ratio metrics),
+                        last-rebalance: current-block
+                    }
+                )
+            )
+            (ok true)
+        )
+    )
+)
