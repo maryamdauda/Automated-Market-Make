@@ -52,6 +52,21 @@ plan:
         - emulated-contract-publish:
             contract-name: AMM
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/AMM.clar
+            path: "contracts\\AMM.clar"
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: DynamicLiquidityManager
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: "contracts\\DynamicLiquidityManager.clar"
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: ImpermanentLossProtection
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: "contracts\\ImpermanentLossProtection.clar"
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: YieldFarming
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: "contracts\\YieldFarming.clar"
             clarity-version: 3
       epoch: "3.1"
