@@ -9,7 +9,30 @@ requirements = []
 path = 'contracts/AMM.clar'
 clarity_version = 3
 epoch = 3.1
+
+[contracts.ImpermanentLossProtection]
+path = 'contracts/ImpermanentLossProtection.clar'
+clarity_version = 3
+epoch = 3.1
 [repl.analysis]
+passes = ['check_checker']
+
+[contracts.YieldFarming]
+path = 'contracts/YieldFarming.clar'
+clarity_version = 3
+epoch = 3.1
+
+[contracts.DynamicLiquidityManager]
+path = 'contracts/DynamicLiquidityManager.clar'
+clarity_version = 3
+epoch = 3.1
+
+[contracts.ArbitrageMonitor]
+path = 'contracts/ArbitrageMonitor.clar'
+clarity_version = 3
+epoch = 3.1
+
+[repl.YieldFarming]
 passes = ['check_checker']
 
 [repl.analysis.check_checker]
