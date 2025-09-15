@@ -55,6 +55,11 @@ plan:
             path: "contracts\\AMM.clar"
             clarity-version: 3
         - emulated-contract-publish:
+            contract-name: ArbitrageMonitor
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: "contracts\\ArbitrageMonitor.clar"
+            clarity-version: 3
+        - emulated-contract-publish:
             contract-name: DynamicLiquidityManager
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: "contracts\\DynamicLiquidityManager.clar"
